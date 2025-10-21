@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="es-CL">
+<head>
+    <meta charset="UTF8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rifa Online - 550 Números</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+        canvas {
+            cursor: pointer;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            max-width: 100%;
+            height: auto;
+        }
+        #tooltip {
+            position: absolute;
+            display: none;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            pointer-events: none; /* Evita que el tooltip interfiera con los eventos del mouse en el canvas */
+            white-space: nowrap;
+            z-index: 10;
+        }
+        @keyframes winner-pop {
+            0% { transform: scale(0.5); opacity: 0; }
+            70% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .winner-animation {
+            animation: winner-pop 0.5s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div id="tooltip"></div>
+
+    <div class="w-full max-w-7xl bg-white rounded-lg shadow-xl p-6 md:p-8">
+        <header class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-900">Rifa Great58</h1>
+            <p class="text-slate-500 mt-2">¡Selecciona, marca los números vendidos y sortea al ganador!</p>
+        </header>
+
+        <main class="flex flex-col lg:flex-row gap-6 md:gap-8">
+            <!-- Coluna dos Controles -->
+            <div class="lg:w-1/3 order-2 lg:order-1 bg-slate-50 p-6 rounded-lg border border-slate-200">
+                <h2 class="text-xl font-bold mb-4 border-b pb-2">Controles de la Rifa</h2>
+
+                <!-- Seção para Marcar Número -->
+                <div class="mb-6 space-y-3">
+                    <h3 class="text-lg font-semibold">Vender Número</h3>
+                    <div>
+                        <label for="number-input" class="block text-sm font-medium text-slate-700 mb-1">Número</label>
+                        <input type="number" id="number-input" min="1" max="550" class="block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm" placeholder="Ej: 42">
+                    </div>
+                     <div>
+                        <label for="buyer-name" class="block text-sm font-medium text-slate-700 mb-1">Nombre del Comprador</label>
+                        <input type="text" id="buyer-name" class="block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm" placeholder="Juan Pérez">
+                    </div>
+                     <div>
+                        <label for="buyer-phone" class="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
+                        <input type="tel" id="buyer-phone" class="block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm" placeholder="+56 9 8765 4321">
+                    </div>
+                    <button id="mark-button" class="w-full px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 transition-colors duration-200">Marcar como Vendido</button>
+                </div>
+
+                <!-- Seção de Sorteio -->
+                <div class="mb-6 space-y-3">
+                     <h3 class="text-lg font-semibold">Sorteo</h3>
+                     <div class="flex gap-2">
+                        <button id="draw-button" class="w-full px-4 py-3 bg-amber-500 text-white font-bold rounded-md shadow-sm hover:bg-amber-600 transition-colors duration-200 disabled:bg-slate-400 disabled:cursor-not-allowed">
+                            ¡Sortear Ganador!
+                        </button>
+                        <button id="reset-draw-button" title="Reiniciar Sorteo" class="px-4 py-3 bg-slate-600 text-white font-bold rounded-md shadow-sm hover:bg-slate-700 transition-colors duration-200">
+                            ⟲
+                        </button>
+                     </div>
+                     <div class="bg-white p-3 rounded-lg border border-slate-200">
+                        <h4 class="font-semibold mb-2">Ganadores: <span id="winner-count">0</span>/20</h4>
+                        <ol id="winners-list" class="list-decimal list-inside h-32 overflow-y-auto text-sm space-y-1"></ol>
+                     </div>
+                </div>
+
+                <!-- Seção de Status e Mensagens -->
+                <div>
+                    <h3 class="text-lg font-semibold mb-2">Estado</h3>
+                    <div id="status-box" class="min-h-[80px] bg-white p-4 rounded-lg border border-slate-200 text-center flex items-center justify-center">
+                        <p id="status-message" class="text-slate-500">Esperando acción...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coluna do Canvas -->
+            <div class="lg:w-2/3 order-1 lg:order-2 flex justify-center items-center">
+                <canvas id="raffle-canvas"></canvas>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Configurações Iniciais ---
+            const canvas = document.getElementById('raffle-canvas');
+            const ctx = canvas.getContext('2d');
+            const numberInput = document.getElementById('number-input');
+            const buyerNameInput = document.getElementById('buyer-name');
+            const buyerPhoneInput = document.getElementById('buyer-phone');
+            const markButton = document.getElementById('mark-button');
+            const drawButton = document.getElementById('draw-button');
+            const resetDrawButton = document.getElementById('reset-draw-button');
+            const statusMessage = document.getElementById('status-message');
+            const statusBox = document.getElementById('status-box');
+            const tooltip = document.getElementById('tooltip');
+            const winnersList = document.getElementById('winners-list');
+            const winnerCount = document.getElementById('winner-count');
+
+
+            const TOTAL_NUMBERS = 550;
+            const MAX_WINNERS = 20;
+            const COLS = 25;
+            const ROWS = Math.ceil(TOTAL_NUMBERS / COLS);
+            const CELL_SIZE = 30;
+            const PADDING = 4;
+            const FONT_SIZE = 12;
+            const CANVAS_WIDTH = COLS * (CELL_SIZE + PADDING) + PADDING;
+            const CANVAS_HEIGHT = ROWS * (CELL_SIZE + PADDING) + PADDING;
+            
+            const COLORS = {
+                available: '#22c55e', sold: '#ef4444', winner: '#facc15',
+                textLight: '#ffffff', textDark: '#1e293b', background: '#f8fafc',
+            };
+
+            // --- Estado da Aplicação ---
+            let numbers = [];
+            let winners = [];
+
+            function initializeNumbers() {
+                numbers = [];
+                for (let i = 1; i <= TOTAL_NUMBERS; i++) {
+                    numbers.push({ id: i, sold: false, buyerName: '', buyerPhone: '' });
+                }
+            }
+
+            // --- Lógica de Desenho ---
+            function drawBoard() {
+                ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                ctx.fillStyle = COLORS.background;
+                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+                for (let i = 0; i < TOTAL_NUMBERS; i++) {
+                    const num = numbers[i];
+                    const row = Math.floor(i / COLS);
+                    const col = i % COLS;
+                    const x = col * (CELL_SIZE + PADDING) + PADDING;
+                    const y = row * (CELL_SIZE + PADDING) + PADDING;
+
+                    if (winners.includes(num.id)) {
+                        ctx.fillStyle = COLORS.winner;
+                    } else if (num.sold) {
+                        ctx.fillStyle = COLORS.sold;
+                    } else {
+                        ctx.fillStyle = COLORS.available;
+                    }
+                    
+                    ctx.beginPath();
+                    ctx.roundRect(x, y, CELL_SIZE, CELL_SIZE, 5);
+                    ctx.fill();
+
+                    if (winners.includes(num.id)) {
+                        ctx.strokeStyle = COLORS.textDark;
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    }
+                    
+                    ctx.fillStyle = (num.sold || winners.includes(num.id)) ? COLORS.textLight : COLORS.textDark;
+                    ctx.font = `bold ${FONT_SIZE}px Inter`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(num.id, x + CELL_SIZE / 2, y + CELL_SIZE / 2 + 1);
+                }
+            }
+
+            // --- Funções de Lógica e UI ---
+            function updateStatus(message, type = 'info') {
+                statusMessage.textContent = message;
+                statusBox.className = 'min-h-[80px] p-4 rounded-lg border text-center flex items-center justify-center'; // Reset
+                
+                if (type === 'error') statusBox.classList.add('bg-red-100', 'border-red-200', 'text-red-700');
+                else if (type === 'success') statusBox.classList.add('bg-green-100', 'border-green-200', 'text-green-700');
+                else if (type === 'winner') {
+                    statusBox.classList.add('bg-amber-100', 'border-amber-200', 'text-amber-700', 'font-bold', 'text-lg', 'winner-animation');
+                } else {
+                     statusBox.classList.add('bg-white', 'border-slate-200');
+                }
+            }
+
+             function updateWinnersList() {
+                winnersList.innerHTML = '';
+                winners.forEach(winnerId => {
+                    const li = document.createElement('li');
+                    li.textContent = `N° ${winnerId}`;
+                    winnersList.appendChild(li);
+                });
+                winnerCount.textContent = winners.length;
+                updateDrawButtonState();
+            }
+
+            function markNumberSold() {
+                const numValue = parseInt(numberInput.value);
+                const name = buyerNameInput.value.trim();
+                const phone = buyerPhoneInput.value.trim();
+
+                if (isNaN(numValue) || numValue < 1 || numValue > TOTAL_NUMBERS) {
+                    updateStatus(`Número inválido. Ingresa un valor entre 1 y ${TOTAL_NUMBERS}.`, 'error');
+                    return;
+                }
+                if (!name || !phone) {
+                    updateStatus('El nombre y el teléfono son obligatorios para vender un número.', 'error');
+                    return;
+                }
+                
+                const number = numbers[numValue - 1];
+                if (number.sold) {
+                    updateStatus(`El número ${numValue} ya fue vendido.`, 'error');
+                    return;
+                }
+
+                number.sold = true;
+                number.buyerName = name;
+                number.buyerPhone = phone;
+                
+                updateStatus(`Número ${numValue} vendido a ${name}.`, 'success');
+                drawBoard();
+                updateDrawButtonState();
+
+                numberInput.value = '';
+                buyerNameInput.value = '';
+                buyerPhoneInput.value = '';
+                numberInput.focus();
+            }
+
+            function unmarkNumber(numberId) {
+                 const number = numbers[numberId - 1];
+                 if (winners.includes(numberId)) {
+                     updateStatus(`No es posible desmarcar el N° ${numberId} porque ya fue sorteado.`, 'error');
+                     return;
+                 }
+                 number.sold = false;
+                 number.buyerName = '';
+                 number.buyerPhone = '';
+                 updateStatus(`El número ${numberId} ahora está disponible.`, 'success');
+                 drawBoard();
+                 updateDrawButtonState();
+            }
+
+            function updateDrawButtonState() {
+                const eligibleForDraw = numbers.filter(n => n.sold && !winners.includes(n.id));
+                drawButton.disabled = eligibleForDraw.length === 0 || winners.length >= MAX_WINNERS;
+            }
+
+            function handleDrawWinner() {
+                const eligibleNumbers = numbers.filter(n => n.sold && !winners.includes(n.id));
+
+                if (winners.length >= MAX_WINNERS) {
+                    updateStatus('Límite de 20 ganadores alcanzado.', 'error');
+                    return;
+                }
+                if (eligibleNumbers.length === 0) {
+                    updateStatus('No hay números disponibles para el sorteo.', 'error');
+                    return;
+                }
+
+                let tempWinner = null;
+                let attempts = 0;
+                const maxAttempts = 30;
+                const interval = setInterval(() => {
+                    attempts++;
+                    const randomIndex = Math.floor(Math.random() * eligibleNumbers.length);
+                    tempWinner = eligibleNumbers[randomIndex].id;
+                    
+                    // Animação visual no status
+                    updateStatus(`Sorteando... ${tempWinner}`);
+
+                    if (attempts >= maxAttempts) {
+                        clearInterval(interval);
+                        winners.push(tempWinner);
+                        updateStatus(`¡El ganador es el N° ${tempWinner}!`, 'winner');
+                        updateWinnersList();
+                        drawBoard();
+                    }
+                }, 100);
+            }
+
+            function handleResetDraw() {
+                winners = [];
+                updateStatus('Sorteo reiniciado. La lista de ganadores está vacía.', 'info');
+                updateWinnersList();
+                drawBoard();
+            }
+
+            // --- Event Listeners ---
+            markButton.addEventListener('click', markNumberSold);
+            drawButton.addEventListener('click', handleDrawWinner);
+            resetDrawButton.addEventListener('click', handleResetDraw);
+            
+            canvas.addEventListener('click', (event) => {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const x = (event.clientX - rect.left) * scaleX;
+                const y = (event.clientY - rect.top) * scaleY;
+
+                const col = Math.floor(x / (CELL_SIZE + PADDING));
+                const row = Math.floor(y / (CELL_SIZE + PADDING));
+                const index = row * COLS + col;
+
+                if (index < TOTAL_NUMBERS) {
+                    const numberId = index + 1;
+                    if (numbers[index].sold) {
+                        unmarkNumber(numberId);
+                    } else {
+                        numberInput.value = numberId;
+                        buyerNameInput.focus();
+                    }
+                }
+            });
+
+            canvas.addEventListener('mousemove', (event) => {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const mouseX = (event.clientX - rect.left) * scaleX;
+                const mouseY = (event.clientY - rect.top) * scaleY;
+                
+                const col = Math.floor(mouseX / (CELL_SIZE + PADDING));
+                const row = Math.floor(mouseY / (CELL_SIZE + PADDING));
+                const index = row * COLS + col;
+
+                if (index < TOTAL_NUMBERS && numbers[index].sold) {
+                    const num = numbers[index];
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = `${event.clientX + 15}px`;
+                    tooltip.style.top = `${event.clientY}px`;
+                    tooltip.innerHTML = `<strong>N° ${num.id}</strong><br>${num.buyerName}<br>${num.buyerPhone}`;
+                } else {
+                    tooltip.style.display = 'none';
+                }
+            });
+
+            canvas.addEventListener('mouseout', () => {
+                tooltip.style.display = 'none';
+            });
+
+            // --- Inicialização ---
+            function setup() {
+                canvas.width = CANVAS_WIDTH;
+                canvas.height = CANVAS_HEIGHT;
+                initializeNumbers();
+                drawBoard();
+                updateDrawButtonState();
+                updateWinnersList();
+            }
+
+            setup();
+        });
+    </script>
+</body>
+</html>
